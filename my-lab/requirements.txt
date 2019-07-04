@@ -1,0 +1,8 @@
+ansible>=2.4,<=2.7.11
+molecule>=2.6,<=2.19
+testinfra>=1.10,<=1.16.0
+python-vagrant>=0.5.15
+
+#special for molecule version 2.19
+Jinja2<=2.10
+PyYAML<=3.13

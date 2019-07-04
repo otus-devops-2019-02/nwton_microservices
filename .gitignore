@@ -1,0 +1,23 @@
+# Default use:
+# core.excludesfile=~/work/gitignore_global
+
+# For terraform temp files
+*.tfstate
+*.tfstate.*.backup
+*.tfstate.backup
+*.tfvars
+.terraform/
+
+# For ansible temp files
+*.retry
+
+# Vagrant & molecule
+.vagrant/
+*.log
+*.pyc
+.molecule
+.cache
+.pytest_cache
+
+# virtualenv for lab
+my-lab/venv/
