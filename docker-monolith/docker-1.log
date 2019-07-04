@@ -1,0 +1,37 @@
+root@docker-16:~# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+8b5eb26cce58        ubuntu              "bash"              15 minutes ago      Up 3 minutes                            frosty_easley
+
+root@docker-16:~# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+ubuntu              latest              4c108a37151f        2 weeks ago         64.2MB
+hello-world         latest              fce289e99eb9        6 months ago        1.84kB
+
+
+root@docker-16:~# docker commit 8b5eb26cce58 nwton/ubuntu-tmp-file
+sha256:b2ba41d58bcbe69b7268af6b9ba70ed9fc873bfb0788713484e64224da1f89fb
+
+root@docker-16:~# docker images
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+nwton/ubuntu-tmp-file   latest              b2ba41d58bcb        3 seconds ago       64.2MB
+ubuntu                  latest              4c108a37151f        2 weeks ago         64.2MB
+hello-world             latest              fce289e99eb9        6 months ago        1.84kB
+
+
+Дополнительное задание:
+Сравните вывод двух следующих команд:
+- docker inspect <u_container_id>
+- docker inspect <u_image_id>
+На основе вывода команд объясните, чем отличается контейнер от образа.
+
+root@docker-16:~# docker inspect 8b5eb26cce58 > /vagrant/docker_inspect_container.log
+root@docker-16:~# docker inspect b2ba41d58bcb > /vagrant/docker_inspect_image_cont.log
+root@docker-16:~# docker inspect 4c108a37151f > /vagrant/docker_inspect_image_ubuntu.log
+
+Образ - содержимое диска контейнера (_виртуальной машины_).
+При создании нового образа через commit контейнера добавляется еще один слой в Layers 
+с новым sha256 в дополнении к тем, что были в базовом образе, с текущим состоянием
+файловой системы инстанса.
+Контейнер - запущенный экземпляр _виртуальной машины_ из образа, имеет только ссылку
+на образ и все остальные атрибуты инстанса - лимиты памяти и CPU, сетевые настройки,
+текущий статус (запущен или нет) и пр.
