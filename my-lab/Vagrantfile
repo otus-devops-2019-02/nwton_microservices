@@ -1,0 +1,28 @@
+Vagrant.configure("2") do |config|
+
+  config.vm.provider :virtualbox do |v|
+    v.memory = 1536
+    v.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
+  end
+
+  config.vm.define "docker-lab-16" do |lab_d16|
+    lab_d16.vm.box = "ubuntu/xenial64"
+    lab_d16.vm.hostname = "docker-16"
+    lab_d16.vm.network :private_network, ip: "10.10.10.16"
+
+    lab_d16.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/lab_docker.yml"
+    end
+  end
+
+  config.vm.define "docker-lab-18" do |lab_d18|
+    lab_d18.vm.box = "ubuntu/bionic64"
+    lab_d18.vm.hostname = "docker-18"
+    lab_d18.vm.network :private_network, ip: "10.10.10.18"
+
+    #lab_d18.vm.provision "ansible" do |ansible|
+    #  ansible.playbook = "playbooks/lab_docker.yml"
+    #end
+  end
+
+end
