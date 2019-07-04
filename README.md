@@ -16,8 +16,15 @@ vagrant up docker-lab-16
 vagrant provision docker-lab-16
 vagrant ssh docker-lab-16
 
+ssh-add .vagrant/machines/docker-lab-16/virtualbox/private_key
+ssh vagrant@10.10.10.16
+
 deactivate
 ```
+Можно использовать ключ из vagrant, а можно добавить свой
+ключ в инстанс дюжиной разных способов:
+- https://stackoverflow.com/questions/30075461/how-do-i-add-my-own-public-key-to-vagrant-vm
+
 
 ## Установка docker под WSL
 
@@ -31,6 +38,27 @@ virtualbox удалили, а напрямую из WSL работать не б
 - https://nickjanetakis.com/blog/setting-up-docker-for-windows-and-wsl-to-work-flawlessly
 - https://nickjanetakis.com/blog/docker-tip-73-connecting-to-a-remote-docker-daemon
 - https://github.com/kaisalmen/wsltooling/blob/world/scripts/install/installDocker.sh
+
+Поправка: есть сведения, что в последних версиях WSL включили
+правильную поддержку cgroups и там docker-ce версии 17.09.0
+даже работает без всяких проблем:
+- https://medium.com/faun/docker-running-seamlessly-in-windows-subsystem-linux-6ef8412377aa
+- https://github.com/Microsoft/WSL/issues/2291#issuecomment-383698720
+- https://github.com/Microsoft/WSL/issues/2291#issuecomment-471235931
+- https://github.com/Microsoft/WSL/issues/2291#issuecomment-475941596
+
+На моём компьютере удалось запустить демон только добавлением строчки
+`DOCKER_OPTS="--iptables=false --bridge=none"`
+в файле /etc/default/docker, после этого сервис стартовал и получилось
+запустить тестовые контейнеры:
+``` text
+docker run --network host hello-world
+docker run --network host -it busybox sh
+docker run --network host -it alpine sh
+```
+
+Как PoC работы docker под WSL подойдёт, но интереснее полноценная
+версия работающая в виртуалке.
 
 ## Установка docker под Linux
 
@@ -73,7 +101,22 @@ sudo apt-get install docker-ce=<VERSION_STRING> docker-ce-cli=<VERSION_STRING> c
 
 ## Основное задание
 
-Проверка работы и основные команды (от рута):
+Для того, чтобы можно было запускать docker не только от root, но и от
+текущего пользователя, добавляем себя в группу и перелогиниваемся:
+``` text
+$ docker run hello-world
+docker: Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Post http://%2Fvar%2Frun%2Fdocker.sock/v1.39/containers/create: dial unix /var/run/docker.sock: connect: permission denied.
+
+$ ls -l /var/run/docker.sock
+srw-rw---- 1 root docker 0 Jul  4 14:18 /var/run/docker.sock
+
+$ sudo usermod -aG docker $USER
+
+$ cat /etc/group | grep docker
+docker:x:999:vagrant
+```
+
+Проверка работы и основные команды:
 ``` text
 docker version
 docker info
