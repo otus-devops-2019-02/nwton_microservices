@@ -4,6 +4,7 @@ nwton microservices repository
 # HW14. Технология контейнеризации. Введение в Docker.
 ## docker-1
 
+## Локальная лаба для docker
 Собираю свою собственную лабу через vagrant+virtualbox
 с Ubuntu 16.04 и 18.04 для простоты работы под Windows:
 ``` text
@@ -24,6 +25,40 @@ deactivate
 Можно использовать ключ из vagrant, а можно добавить свой
 ключ в инстанс дюжиной разных способов:
 - https://stackoverflow.com/questions/30075461/how-do-i-add-my-own-public-key-to-vagrant-vm
+
+## Использование лабы как docker-host
+Для использования лабы в качестве собственного docker-host
+надо добавить опцию `-H tcp://0.0.0.0` при запуске сервиса.
+Это можно сделать через override для systemd unit
+``` text
+$ less /lib/systemd/system/docker.service
+
+$ systemctl edit docker
+$ service docker restart
+$ service docker status
+
+$ cat /etc/systemd/system/docker.service.d/override.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0 -H fd:// --containerd=/run/containerd/containerd.sock
+```
+
+И после этого используем внутри WSL коннект к определённой лабе:
+``` text
+$ unset DOCKER_HOST
+$ docker ps -a
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+$ export DOCKER_HOST="tcp://10.10.10.16:2375"
+$ docker ps -a
+CONTAINER ID        IMAGE               COMMAND
+8cf36aeac1a4        ubuntu              "bash"
+
+$ docker images
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+ubuntu                  latest              4c108a37151f        2 weeks ago         64.2MB
+hello-world             latest              fce289e99eb9        6 months ago        1.84kB
+```
 
 
 ## Установка docker под WSL
