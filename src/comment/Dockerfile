@@ -1,7 +1,8 @@
-FROM ruby:2.4
+FROM ubuntu:16.04
 
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends build-essential \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ruby-full ruby-dev build-essential \
+    && gem install bundler --no-ri --no-rdoc \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
