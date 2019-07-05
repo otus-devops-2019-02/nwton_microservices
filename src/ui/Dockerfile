@@ -1,18 +1,17 @@
-FROM ubuntu:16.04
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ruby-full ruby-dev build-essential \
-    && gem install bundler --no-ri --no-rdoc \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+FROM alpine:3.9
 
 ENV APP_HOME /app
 RUN mkdir $APP_HOME
 
 WORKDIR $APP_HOME
-COPY Gemfile* $APP_HOME/
-RUN bundle install
 COPY . $APP_HOME
+
+RUN apk update && apk add --no-cache build-base ruby-full ruby-dev ruby-bundler \
+    && gem install bundler --no-ri --no-rdoc \
+    && bundle install \
+    && apk del build-base ruby-dev \
+    && rm -rf /var/cache/* \
+    && rm -rf /root/.cache/*
 
 ENV POST_SERVICE_HOST post
 ENV POST_SERVICE_PORT 5000
