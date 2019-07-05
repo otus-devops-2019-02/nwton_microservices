@@ -351,6 +351,278 @@ docker ps
 # HW16. Docker образы. Микросервисы
 ## docker-3
 
+## dockerfile linter + best practices
+
+Hadolint
+- https://github.com/hadolint/hadolint
+
+Best Practices
+- https://github.com/hadolint/hadolint/wiki
+- https://docs.docker.com/engine/articles/dockerfile_best-practices/
+- https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
+
+## Основное занятие
+
+Получаем исходники
+``` text
+wget https://github.com/express42/reddit/archive/microservices.zip
+unzip microservices.zip
+mv reddit-microservices src
+rm microservices.zip
+```
+
+Предварительно скачиваем образ mongo и начинаем собирать образы
+``` text
+docker pull mongo:latest
+
+docker build -t nwton/post:1.0 ./post-py
+docker build -t nwton/comment:1.0 ./comment
+docker build -t nwton/ui:1.0 ./ui
+```
+
+Ошибки при сборке образов:
+- post-ui
+  - для thriftpy нужен gcc - это пакет build-base для alpine
+- comment и ui
+  - образ указан совсем древний ruby 2.2, сейчас минимальный 2.4
+  - https://hub.docker.com/_/ruby/
+
+Запускаем приложение
+``` text
+docker network create reddit
+
+docker run -d --network=reddit \
+    --network-alias=post_db --network-alias=comment_db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=post \
+    nwton/post:1.0
+docker run -d --network=reddit \
+    --network-alias=comment \
+    nwton/comment:1.0
+docker run -d --network=reddit \
+    -p 9292:9292 nwton/ui:1.0
+```
+
+## Дополнительное задание
+
+Останавливаем все контейнеры и перезапускаем с другими алиасами,
+для того чтобы всё работало - через опцию -e в ENV передаём новые
+имена (аналог доменных имён и файла /etc/hosts)
+- https://docs.docker.com/engine/reference/builder/#env
+- https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#env
+
+``` text
+docker kill $(docker ps -q)
+docker ps -a
+
+docker run -d --network=reddit \
+    --network-alias=extra_post_db --network-alias=extra_comment_db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=extra_post \
+    -e POST_DATABASE_HOST=extra_post_db \
+    nwton/post:1.0
+docker run -d --network=reddit \
+    --network-alias=extra_comment \
+    -e COMMENT_DATABASE_HOST=extra_comment_db \
+    nwton/comment:1.0
+docker run -d --network=reddit \
+    -e POST_SERVICE_HOST=extra_post \
+    -e COMMENT_SERVICE_HOST=extra_comment \
+    -p 9292:9292 nwton/ui:1.0
+```
+
+## Уменьшение размера образов
+
+Сборка новых версий
+``` text
+$ docker images
+REPOSITORY    TAG           IMAGE ID      CREATED             SIZE
+nwton/ui      1.0           f8ae204cf9f8  37 minutes ago      921MB
+nwton/comment 1.0           09614f0fe7cf  38 minutes ago      919MB
+nwton/post    1.0           55b14653cc6b  About an hour ago   109MB
+mongo         latest        785c65f61380  24 hours ago        412MB
+ruby          2.4           91fee5436512  7 days ago          873MB
+ruby          2.2           6c8e6f9667b2  14 months ago       715MB
+python        3.6.0-alpine  cb178ebbf0f2  2 years ago         88.6MB
+
+docker rm $(docker ps -a -q)
+docker rmi $(docker images -q)
+
+docker build -t nwton/comment:2.0 ./comment
+docker build -t nwton/ui:2.0 ./ui
+```
+
+Удаляем старые образы и запускаем приложение, для проверки
+что запустилось всё как нужно - удаляем все лишние образа
+``` text
+docker kill $(docker ps -q)
+
+docker run -d --network=reddit \
+    --network-alias=post_db --network-alias=comment_db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=post \
+    nwton/post:1.0
+docker run -d --network=reddit \
+    --network-alias=comment \
+    nwton/comment:2.0
+docker run -d --network=reddit \
+    -p 9292:9292 nwton/ui:2.0
+
+docker rm $(docker ps -a -q)
+docker rmi $(docker images -q)
+
+$ docker images
+REPOSITORY    TAG           IMAGE ID      CREATED             SIZE
+nwton/ui      2.0           dc9e49ba32d4  2 minutes ago       403MB
+nwton/comment 2.0           c41be17c4bd8  2 minutes ago       400MB
+nwton/post    1.0           55b14653cc6b  About an hour ago   109MB
+mongo         latest        785c65f61380  25 hours ago        412MB
+ubuntu        16.04         13c9f1285025  2 weeks ago         119MB
+python        3.6.0-alpine  cb178ebbf0f2  2 years ago         88.6MB
+```
+Результат - уменьшили больше чем в 2 раза (с 900 Мб до 400 Мб)
+
+## Постоянное хранилище данных
+
+Создаем docker volume и передаём через параметр `-v`
+только в контейнер с mongodb
+``` text
+docker volume create reddit_db
+docker kill $(docker ps -q)
+
+docker run -d --network=reddit \
+    --network-alias=post_db --network-alias=comment_db \
+    -v reddit_db:/data/db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=post \
+    nwton/post:1.0
+docker run -d --network=reddit \
+    --network-alias=comment \
+    nwton/comment:2.0
+docker run -d --network=reddit \
+    -p 9292:9292 nwton/ui:2.0
+```
+
+## Дополнительное задание - уменьшение размера образа
+
+Различные варианты
+- http://jasonwilder.com/blog/2014/08/19/squashing-docker-images/
+- https://medium.com/@gdiener/how-to-build-a-smaller-docker-image-76779e18d48a
+
+Образ на базе Alpine
+- https://alpinelinux.org/
+
+Alpine 3.10 = python 3.7
+- https://pkgs.alpinelinux.org/packages?name=python3&branch=v3.10
+Alpine 3.9 = python 3.6
+- https://pkgs.alpinelinux.org/packages?name=python3&branch=v3.9
+
+Сборка python:3.6.0-alpine собирается вот так:
+- https://hub.docker.com/_/python/
+- https://github.com/docker-library/python/
+- https://github.com/docker-library/python/blob/master/3.6/alpine3.9/Dockerfile
+- https://github.com/docker-library/python/blob/master/3.6/alpine3.10/Dockerfile
+
+``` text
+docker build -t nwton/post:3.0 ./post-py
+docker build -t nwton/comment:3.0 ./comment
+docker build -t nwton/ui:3.0 ./ui
+
+docker kill $(docker ps -q)
+
+docker run -d --network=reddit \
+    --network-alias=post_db --network-alias=comment_db \
+    -v reddit_db:/data/db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=post \
+    nwton/post:3.0
+docker run -d --network=reddit \
+    --network-alias=comment \
+    nwton/comment:3.0
+docker run -d --network=reddit \
+    -p 9292:9292 nwton/ui:3.0
+
+docker rm $(docker ps -a -q)
+docker rmi $(docker images -q)
+```
+
+Итоговый результат:
+``` text
+$ docker images
+REPOSITORY    TAG     IMAGE ID      CREATED         SIZE
+nwton/ui      3.0     1d28e9ebfb53  3 minutes ago   71.3MB
+nwton/comment 3.0     37dd08860408  3 minutes ago   68.5MB
+nwton/post    3.0     3189c96bb718  3 minutes ago   68.5MB
+mongo         latest  785c65f61380  27 hours ago    412MB
+alpine        3.9     055936d39205  7 weeks ago     5.53MB
+```
+
+За счёт использования единого базового образа для всех
+трёх компонентов - будет ещё лучше (скорость скачивания
+и скорость сборки).
+
+Для компонента post-py:
+- базовый образ на базе python:3.6.0-alpine = 109MB
+- переход на alpine:3.9 = 71.8MB
+- очистка каталогов *cache* = 68.5MB
+
+Для компонентов comments и ui:
+- базовый образ на базе ruby:2.4 = 921MB
+- переход на ubuntu:16.04 = 400MB
+- переход на alpine:3.9 = 233MB
+- правильный порядок и RUN в одну строку = 69.8MB
+- очистка каталогов *cache* = 68.5MB
+
+
+## В процессе сделано:
+- Загрузил исходники проекта
+- Создал Dockerfile для трёх модулей (post, comment, ui)
+- Починил и оптимизировал Dockerfile для сборки образов
+- Запустил приложение в контейнерах с настройками
+  сети по-умолчанию
+- Перезапустил приложение в контейнерах с изменёнными алиасами
+  (дополнительное задание)
+- Пересобрал образ ui на базе образа ubuntu 16.04
+- Пересобрал образ comment на базе образа ubuntu 16.04
+  (дополнительное задание), размер уменьшился с 900 до 400 Мб
+- Создал Docker volume для контейнера с MongoDB и переключил
+  на его использование (посты больше не теряются)
+- Перевёл образы на alpine:3.9 и уменьшил размер до 70 Мб
+
+## Как запустить проект:
+ - Запустить на любом хосте с docker
+``` text
+docker pull mongo:latest
+docker build -t nwton/post:3.0 ./post-py
+docker build -t nwton/comment:3.0 ./comment
+docker build -t nwton/ui:3.0 ./ui
+
+docker network create reddit
+docker volume create reddit_db
+
+docker run -d --network=reddit \
+    --network-alias=post_db --network-alias=comment_db \
+    -v reddit_db:/data/db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=post \
+    nwton/post:3.0
+docker run -d --network=reddit \
+    --network-alias=comment \
+    nwton/comment:3.0
+docker run -d --network=reddit \
+    -p 9292:9292 nwton/ui:3.0
+```
+
+## Как проверить работоспособность:
+ - Перейти по ссылке http://localhost:9292 если docker запущен
+   локально или http://_docker_host_ip_:9292/
+
 
 # HW17. Сетевое взаимодействие Docker контейнеров. Docker Compose. Тестирование образов
 ## docker-4
