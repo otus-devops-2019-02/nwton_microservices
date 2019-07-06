@@ -39,6 +39,7 @@ deploy_dev_job:
     name: dev
     url: http://dev.example.com
 
+# manual deploy to staging env
 staging:
   stage: stage
   when: manual
@@ -50,6 +51,7 @@ staging:
     name: stage
     url: https://beta.example.com
 
+# manual deploy to production env
 production:
   stage: production
   when: manual
