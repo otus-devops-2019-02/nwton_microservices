@@ -26,7 +26,7 @@ deactivate
 ключ в инстанс дюжиной разных способов:
 - https://stackoverflow.com/questions/30075461/how-do-i-add-my-own-public-key-to-vagrant-vm
 
-## Использование лабы как docker-host
+### Использование лабы как docker-host
 Для использования лабы в качестве собственного docker-host
 надо добавить опцию `-H tcp://0.0.0.0` при запуске сервиса.
 Это можно сделать через override для systemd unit
@@ -60,6 +60,22 @@ ubuntu                  latest              4c108a37151f        2 weeks ago     
 hello-world             latest              fce289e99eb9        6 months ago        1.84kB
 ```
 
+### Использование generic для docker-machine
+
+Самая простая инсталляция инстанса docker-lab
+(через vagrant сделан бутстрап только для python)
+``` text
+vagrant up docker-lab
+docker-machine create \
+    --driver generic \
+    --generic-ip-address=10.10.10.42 \
+    --generic-ssh-key .vagrant/machines/docker-lab/virtualbox/private_key \
+    --generic-ssh-user=vagrant \
+    docker-lab
+
+eval $(docker-machine env docker-lab)
+docker run hello-world
+```
 
 ## Установка docker под WSL
 
