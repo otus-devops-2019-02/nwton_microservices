@@ -980,6 +980,162 @@ docker-compose down
 # HW19. Устройство Gitlab CI. Построение процесса непрерывной интеграции
 ## gitlab-ci-1
 
+## Создание инстанса с Gitlab и начальная настройка
+
+Создаём свой инстанс с Gitlab CI (2 vCPU + 7,5 Gb mem)
+и открываем доступ, по
+- https://docs.gitlab.com/ce/install/requirements.html
+``` text
+ssh-keygen -y -f ~/.ssh/appuser
+cat ~/.ssh/appuser.pub
+
+gcloud info | grep project
+export GOOGLE_PROJECT=docker-245721
+
+docker-machine create --driver google \
+    --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+    --google-machine-type n1-standard-2 \
+    --google-zone europe-west1-b \
+    --google-disk-size 100 \
+    gitlab-ci
+
+gcloud compute firewall-rules create \
+    --allow tcp:80,tcp:443 \
+    --target-tags=docker-machine \
+    --description="gitlab-ci allow access to HTTP and HTTPS" \
+    --direction=INGRESS \
+    web-access-gitlab-ci
+
+docker-machine ls
+
+eval $(docker-machine env gitlab-ci)
+docker run hello-world
+
+eval $(docker-machine env --unset)
+```
+
+Используем omnibus установку Gitlab CI
+- https://docs.gitlab.com/omnibus/README.html
+- https://docs.gitlab.com/omnibus/docker/README.html
+- https://docs.gitlab.com/omnibus/docker/README.html#install-gitlab-using-docker-compose
+
+Предварительно создавать каталоги в /srv/gitlab
+*не требуется, они будут созданы автоматически*
+при деплое и/или старте контейнера.
+``` bash
+cd gitlab-ci
+docker-compose up -d
+```
+
+Заходим на сервер и проверяем
+``` bash
+docker-machine ssh gitlab-ci
+```
+
+Переходим в админку http://35.187.101.147/ и задаем пароль.
+Затем отключаем регистрацию новых пользователей:
+- Admin Area
+  - Settings
+    - Sign-up restrictions
+      - Sign-up enabled
+
+Создаем группу: homework
+Создаем проект: example
+
+## Работа по заданию
+
+Добавляем remotes в локальный проект
+``` text
+git checkout -b gitlab-ci-1
+git remote add gitlab http://35.187.101.147/homework/example.git
+git push gitlab gitlab-ci-1
+```
+
+Создаем файл .gitlab-ci.yml и отправляем
+``` text
+git add .gitlab-ci.yml
+git commit -m 'add pipeline definition'
+git push gitlab gitlab-ci-1
+```
+
+Получаем токен для runner
+- http://35.187.101.147/homework/example/-/settings/ci_cd
+- https://docs.gitlab.com/runner/install/
+
+``` text
+Set up a specific Runner manually
+Install GitLab Runner
+Specify the following URL during the Runner setup: http://35.187.101.147/
+Use the following registration token during setup: CcV-r_GcnERyzN1q_uZD
+Start the Runner!
+```
+
+Устанавливаем контейнер с runner и регистрируем:
+``` text
+docker run -d --name gitlab-runner --restart always \
+  -v /srv/gitlab-runner/config:/etc/gitlab-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gitlab/gitlab-runner:latest
+
+docker exec -it gitlab-runner \
+  gitlab-runner register --run-untagged --locked=false
+```
+
+Пример регистрации:
+``` text
+$ docker exec -it gitlab-runner \
+>   gitlab-runner register --run-untagged --locked=false
+Runtime platform
+arch=amd64 os=linux pid=13 revision=0e5417a3 version=12.0.1
+Running in system-mode.
+
+Please enter the gitlab-ci coordinator URL (e.g. https://gitlab.com/):
+http://35.187.101.147/
+Please enter the gitlab-ci token for this runner:
+CcV-r_GcnERyzN1q_uZD
+Please enter the gitlab-ci description for this runner:
+[45eab39a6476]: my-runner
+Please enter the gitlab-ci tags for this runner (comma separated):
+linux,xenial,ubuntu,docker
+Registering runner... succeeded                     runner=CcV-r_Gc
+Please enter the executor: parallels, ssh, docker+machine, kubernetes, docker-ssh, shell, virtualbox, docker-ssh+machine, docker:
+docker
+Please enter the default Docker image (e.g. ruby:2.6):
+alpine:latest
+Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
+```
+
+Добавим исходный код reddit в репозиторий
+``` text
+git clone https://github.com/express42/reddit.git && rm -rf ./reddit/.git
+git add reddit/
+git commit -m "Add reddit app"
+git push gitlab gitlab-ci-1
+```
+
+После этого правим код .gitlab-ci.yml и пушим в наш Gitlab.
+
+
+## В процессе сделано:
+- Создал инстанс в GCP с docker через docker-machine
+- Разрешил веб-доступ к инстансу
+- Установил Gitlab через omnibus
+- Создал тестовый проект в gitlab и подключил как remotes
+- Создал и подключил Gitlab Runner к проекту
+- Поэтапно улучшал качество .gitlab-ci.yml
+- Кратко ознакомился с динамическим окружением
+
+## Как запустить проект:
+- через docker-machine или ENV переменную подключиться
+  к удаленному хосту с docker и запустить
+``` bash
+cd gitlab-ci
+docker-compose up -d
+```
+
+## Как проверить работоспособность:
+- Перейти по ссылке http://_IP_gitlab_ci_host_/
+
 
 # HW20. Введение в мониторинг. Модели и принципы работы систем мониторинга
 ## monitoring-1
