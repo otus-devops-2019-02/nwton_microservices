@@ -4,6 +4,7 @@ nwton microservices repository
 # HW14. Технология контейнеризации. Введение в Docker.
 ## docker-1
 
+## Локальная лаба для docker
 Собираю свою собственную лабу через vagrant+virtualbox
 с Ubuntu 16.04 и 18.04 для простоты работы под Windows:
 ``` text
@@ -24,6 +25,40 @@ deactivate
 Можно использовать ключ из vagrant, а можно добавить свой
 ключ в инстанс дюжиной разных способов:
 - https://stackoverflow.com/questions/30075461/how-do-i-add-my-own-public-key-to-vagrant-vm
+
+## Использование лабы как docker-host
+Для использования лабы в качестве собственного docker-host
+надо добавить опцию `-H tcp://0.0.0.0` при запуске сервиса.
+Это можно сделать через override для systemd unit
+``` text
+$ less /lib/systemd/system/docker.service
+
+$ systemctl edit docker
+$ service docker restart
+$ service docker status
+
+$ cat /etc/systemd/system/docker.service.d/override.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0 -H fd:// --containerd=/run/containerd/containerd.sock
+```
+
+И после этого используем внутри WSL коннект к определённой лабе:
+``` text
+$ unset DOCKER_HOST
+$ docker ps -a
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+$ export DOCKER_HOST="tcp://10.10.10.16:2375"
+$ docker ps -a
+CONTAINER ID        IMAGE               COMMAND
+8cf36aeac1a4        ubuntu              "bash"
+
+$ docker images
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+ubuntu                  latest              4c108a37151f        2 weeks ago         64.2MB
+hello-world             latest              fce289e99eb9        6 months ago        1.84kB
+```
 
 
 ## Установка docker под WSL
@@ -626,3 +661,297 @@ docker run -d --network=reddit \
 
 # HW17. Сетевое взаимодействие Docker контейнеров. Docker Compose. Тестирование образов
 ## docker-4
+
+Запускаем старый docker-host и подключаемся
+``` text
+docker-machine ls
+docker-machine status docker-host
+docker-machine start docker-host
+eval $(docker-machine env docker-host)
+
+docker pull joffotron/docker-net-tools:latest
+```
+
+### Проверяем none network driver
+Запуск
+``` text
+docker run -ti --rm --network none joffotron/docker-net-tools -c ifconfig
+```
+Доступен только loopback
+
+### Проверяем host network driver
+Запуск
+``` text
+docker run -ti --rm --network host joffotron/docker-net-tools -c ifconfig
+
+docker run --network host -d nginx
+docker run --network host -d nginx
+docker ps
+docker run --network host -d nginx
+docker run --network host -d nginx
+docker ps
+
+docker kill $(docker ps -q)
+```
+Доступны все интерфейсы с хоста.
+
+При одновременной запуске нескольких контейнеров
+претендующих на один порт - приложение в повторных
+контейнерах крэшится (т.к. не может получить биндинг)
+и остаётся работать только самый первый контейнер.
+
+
+### Проверяем docker network namespaces
+Запуск
+``` text
+docker-machine ssh docker-host
+    $ sudo ln -s /var/run/docker/netns /var/run/netns
+    $ sudo ip netns
+
+docker run -ti --rm --network none joffotron/docker-net-tools -c sh
+    $ sudo ip netns
+    $ sudo ip netns exec default ifconfig
+    $ sudo ip netns exec 4b575d46533e ifconfig
+
+docker run -ti --rm --network host joffotron/docker-net-tools -c sh
+    $ sudo ip netns
+```
+
+Отдельный namespace для host network не создается.
+Всё работает в default namespace.
+
+### Проверяем bridge network driver
+Запуск
+``` text
+docker network ls
+docker network rm reddit
+docker network create reddit --driver bridge
+
+docker run -d --network=reddit mongo:latest
+docker run -d --network=reddit nwton/post:3.0
+docker run -d --network=reddit nwton/comment:3.0
+docker run -d --network=reddit -p 9292:9292 nwton/ui:3.0
+```
+
+Присваиваем контейнерам DNS имена и алиасы
+``` text
+docker kill $(docker ps -q)
+
+docker run -d --network=reddit \
+    --network-alias=post_db --network-alias=comment_db \
+    -v reddit_db:/data/db \
+    mongo:latest
+docker run -d --network=reddit \
+    --network-alias=post \
+    nwton/post:3.0
+docker run -d --network=reddit \
+    --network-alias=comment \
+    nwton/comment:3.0
+docker run -d --network=reddit \
+    -p 9292:9292 nwton/ui:3.0
+```
+
+Запускаем в изолированных бриджах
+``` text
+docker kill $(docker ps -q)
+
+docker network create back_net --subnet=10.0.2.0/24
+docker network create front_net --subnet=10.0.1.0/24
+docker network rm reddit
+docker network ls
+
+docker run -d --network=back_net \
+    --network-alias=post_db --network-alias=comment_db \
+    -v reddit_db:/data/db \
+    --name mongo_db \
+    mongo:latest
+docker run -d --network=back_net \
+    --network-alias=post \
+    --name post \
+    nwton/post:3.0
+docker run -d --network=back_net \
+    --network-alias=comment \
+    --name comment \
+    nwton/comment:3.0
+docker run -d --network=front_net \
+    --name ui \
+    -p 9292:9292 nwton/ui:3.0
+
+docker network connect front_net post
+docker network connect front_net comment
+```
+
+Проверяем как это всё выглядит на docker-host
+``` text
+docker network ls
+docker-machine ssh docker-host
+    $ sudo apt-get update && sudo apt-get install bridge-utils
+    $ ifconfig | grep br
+    $ brctl show br-13153a014c2d
+    $ brctl show br-904be4661a83
+    $ sudo iptables -nL -t nat
+    $ ps ax | grep docker-proxy
+```
+
+## Работа с docker-compose
+
+Установка под WSL в локальный каталог
+(или можно сделать `pip install docker-compose`)
+- https://docs.docker.com/compose/install/#install-compose
+``` text
+curl -L "https://github.com/docker/compose/releases/download/1.24.0/docker-compose-$(uname -s)-$(uname -m)" -o ~/bin/docker-compose
+
+chmod +x ~/bin/docker-compose
+
+$ docker-compose --version
+docker-compose version 1.24.0, build 0aa59064
+```
+
+Запуск сборки через docker-compose
+``` text
+docker kill $(docker ps -q)
+
+export USERNAME=nwton
+docker-compose up -d
+docker-compose ps
+
+docker images
+docker ps
+```
+Примечание: т.к. ранее уже собирались образы с тэгом
+версии 3.0, а старые 1.0 были удалены, то будет пересборка.
+
+Документация по ENV
+- https://docs.docker.com/compose/environment-variables/#the-env-file
+
+Пересборка с использованием env файла
+``` text
+docker kill $(docker ps -q)
+
+unset USERNAME
+docker-compose up -d
+    # WARNING: Service "post_db" is using volume "/data/db" from
+    # the previous container. Host mapping "reddit_db" has no effect.
+    # Remove the existing containers (with `docker-compose rm post_db`)
+    # to use the host volume
+
+docker-compose stop post_db
+docker-compose rm post_db
+docker-compose up -d
+docker-compose ps
+
+docker volume ls
+docker volume rm src_post_db
+docker volume rm $(docker volume ls -q)
+
+docker images
+docker ps
+
+docker-compose down
+docker-compose up -d
+```
+
+Примечание: при параметризации нужно учитывать версию compose,
+т.к. указание параметров различается в разных версиях, например,
+указание name для volumes требует версию 2.1+ или 3.4+, но не
+работает в 3.3, как использовано в темплейте из презентации
+- https://docs.docker.com/compose/compose-file/#name
+- https://docs.docker.com/compose/compose-file/#volumes
+- https://docs.docker.com/compose/compose-file/#volume-configuration-reference
+- https://docs.docker.com/storage/volumes/
+- https://docs.docker.com/compose/compose-file/compose-file-v2/#name
+- https://docs.docker.com/compose/compose-file/compose-file-v1/
+
+Для смены префикса всех обьектов можно использовать
+переменную COMPOSE_PROJECT_NAME, но при смене на лету
+нужно помнить, что composer забудет про уже созданные
+объекты с предыдущим префиксов и хвосты придётся удалять
+уже вручную, лучше сделать заранее `docker-compose down`.
+
+Смену имени контейнера с добавлением алиасов проводить
+следует примерно так
+``` text
+docker-compose stop post_db
+docker-compose rm post_db
+...
+docker-compose up -d mongo_db
+```
+
+
+## Дополнительное задание
+Создайте docker-compose.override.yml для reddit проекта, который позволит
+- Изменять код каждого из приложений, не выполняя сборку образа
+- Запускать puma для руби приложений в дебаг режиме с двумя воркерами (флаги --debug и -w 2)
+
+Документация:
+- https://docs.docker.com/compose/extends/
+
+Создан файл, в котором переопределены:
+- для каждого каталога с приложением указанным в Dockerfile
+  со значением APP_HOME=/app создан отдельный volume
+- через command переопределен CMD указанный в Dockerfile
+
+Проверяем, перезапускаем и снова проверяем
+``` text
+$ docker ps
+$ docker volume ls
+
+$ docker-compose up -d
+Creating volume "stage_app_ui" with default driver
+Creating volume "stage_app_comment" with default driver
+Creating volume "stage_app_post" with default driver
+Recreating stage_ui_1       ... done
+Recreating stage_mongo_db_1 ... done
+Recreating stage_post_1     ... done
+Recreating stage_comment_1  ... done
+
+$ docker volume rm $(docker volume ls -q)
+
+$ docker volume ls
+DRIVER              VOLUME NAME
+local               c15d3ef0539b408753eae541b35c4bd7c41db7ca80668172380bffcfa9746d5f
+local               reddit_db
+local               stage_app_comment
+local               stage_app_post
+local               stage_app_ui
+
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND
+243841b997a7        nwton/comment:1.0   "puma --debug -w 2"
+2e7cb0784f32        nwton/post:1.0      "python3 post_app.py"
+387682279f99        nwton/ui:1.0        "puma --debug -w 2"
+c64c6b741e2b        mongo:3.2           "docker-entrypoint.s…"
+```
+
+
+## В процессе сделано:
+- Исследовал none, host и bridge драйвера сети в docker
+- Изучил особенности работы с сетями в docker
+- Установил docker-compose
+- Создал docker-compose.yml для деплоя приложения
+- Добавил параметризацию и поднял версию до 3.4:
+  * порт приложения;
+  * версии сервисов;
+  * имя volume для базы данных
+- Добавил работу компонентов в раздельных сетях
+- Сменил имя и добавил пропущеный алиас для контейнера с
+  базой данных (не работали комментарии)
+- Добавил переменную COMPOSE_PROJECT_NAME для изменения префикса
+- Добавил docker-compose.override.yml, который позволит
+  * Изменять код каждого из приложений, не выполняя сборку образа
+  * Запускать puma для руби приложений в дебаг режиме с двумя
+    воркерами (флаги --debug и -w 2)
+
+## Как запустить проект:
+ - Запустить на любом хосте с docker
+``` text
+cd src
+cp .env.example .env
+docker-compose up -d
+...
+docker-compose down
+```
+
+## Как проверить работоспособность:
+ - Перейти по ссылке http://localhost:9292 если docker запущен
+   локально или http://_docker_host_ip_:9292/
