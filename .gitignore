@@ -21,3 +21,6 @@
 
 # virtualenv for lab
 my-lab/venv/
+
+# docker files
+docker/.env
