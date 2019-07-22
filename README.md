@@ -1140,6 +1140,142 @@ docker-compose up -d
 # HW20. Введение в мониторинг. Модели и принципы работы систем мониторинга
 ## monitoring-1
 
+## Начальная настройка окружения
+
+Создадим правило фаервола для Prometheus и Puma.
+``` text
+gcloud compute firewall-rules create prometheus-default --allow tcp:9090
+gcloud compute firewall-rules create puma-default --allow tcp:9292
+```
+
+Создадим Docker хост в GCE и настроим локальное окружение на работу с ним.
+``` text
+gcloud info | grep project
+export GOOGLE_PROJECT=docker-245721
+
+# create docker host
+docker-machine create --driver google \
+    --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+    --google-machine-type n1-standard-2 \
+    --google-zone europe-west1-b \
+    docker-host
+
+# configure local env
+eval $(docker-machine env docker-host)
+```
+
+## Работа по ДЗ
+
+Систему мониторинга Prometheus будем запускать внутри Docker контейнера.
+Для начального знакомства воспользуемся готовым образом с DockerHub.
+``` text
+docker run --rm -p 9090:9090 -d --name prometheus  prom/ prometheus:v2.1.0
+
+docker run --rm -p 9090:9090 -d --name prometheus  prom/prometheus
+
+docker-machine ip docker-host
+
+docker stop prometheus
+``` text
+
+Пример метрик:
+``` text
+prometheus_build_info{branch="HEAD",goversion="go1.12.7",instance="localhost:9090",job="prometheus",revision="e5b22494857deca4b806f74f6e3a6ee30c251763",version="2.11.1"}
+
+up{instance="localhost:9090",job="prometheus"}
+```
+
+Собираем собственный docker образ для prometheus
+``` text
+export USER_NAME=username
+cd monitoring/prometheus/
+docker build -t $USER_NAME/prometheus .
+cd -
+```
+или в одну строчку без смены рабочего каталога:
+``` text
+docker build -t $USER_NAME/prometheus ./monitoring/prometheus
+```
+
+Собираем собственные docker образы сервисов
+``` text
+for i in ui post-py comment
+do
+  cd src/$i; bash docker_build.sh; cd -
+done
+```
+
+Запуск и остановка наших сервисов
+``` text
+cd docker
+docker-compose up -d
+
+docker-compose stop post
+docker-compose start post
+
+docker build -t $USER_NAME/prometheus ../monitoring/prometheus
+
+docker-compose down
+docker-compose up -d
+
+cd -
+```
+
+Отправка собранных образов на Docker Hub
+``` text
+docker login
+
+docker push $USER_NAME/ui
+docker push $USER_NAME/comment
+docker push $USER_NAME/post
+docker push $USER_NAME/prometheus 
+```
+
+Удаляем временный хост для docker
+``` text
+docker-machine rm docker-host
+```
+
+## Дополнительные задания
+
+Экспортер для MongoDB
+- Проект [dcu/mongodb_exporter](https://github.com/dcu/mongodb_exporter)
+  не самый лучший вариант, т.к. у него есть проблемы с поддержкой (не обновляется).
+
+Blackbox prober exporter https://prometheus.io
+- https://github.com/prometheus/blackbox_exporter
+
+Документация по makefile
+- https://www.ibm.com/developerworks/ru/library/l-debugmake/index.html
+- https://habr.com/ru/post/132524/
+- http://rus-linux.net/nlib.php?name=/MyLDP/algol/gnu_make/gnu_make_3-79_russian_manual.html
+
+## В процессе сделано:
+- Добавил правила фаервола GCP для доступа к prometheus и reddit-puma
+- Создал инстанс в GCP с docker через docker-machine
+- Создал собственные docker образы:
+  - для prometheus
+  - для microservices из src
+- изменён docker-compose файл
+  - удалены build (сборка через docker_buld.sh)
+  - используемые версии images бампнуты до latest
+- собранные docker образы выложены на [Docker Hub](https://hub.docker.com/u/nwton/)
+  - [nwton/ui](https://hub.docker.com/r/nwton/ui)
+  - [nwton/comment](https://hub.docker.com/r/nwton/comment)
+  - [nwton/post](https://hub.docker.com/r/nwton/post)
+  - [nwton/prometheus](https://hub.docker.com/r/nwton/prometheus)
+
+## Как запустить проект:
+- через docker-machine или ENV переменную подключиться
+  к удаленному хосту с docker и запустить
+``` bash
+cd docker
+docker-compose up -d
+```
+
+## Как проверить работоспособность:
+- Перейти по ссылке http://_IP_docker_host_:9090/
+
 
 # HW21. Мониторинг приложения и инфраструктуры
 ## monitoring-2
