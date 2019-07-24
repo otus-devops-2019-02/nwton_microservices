@@ -1432,7 +1432,40 @@ docker-compose -f docker-compose-monitoring.yml up -d
 
 
 # HW23. Применение системы логирования в инфраструктуре на основе Docker.
-## logging
+## logging-1
+
+## Начальная настройка окружения
+
+Создадим Docker хост в GCE и настроим локальное окружение на работу с ним.
+Идентично HW20.
+
+## Работа по ДЗ
+
+Обновляем исходный код [на версию](https://github.com/express42/reddit/tree/logging)
+``` bash
+rm -rf src/
+wget https://github.com/express42/reddit/archive/logging.zip
+unzip logging.zip
+mv reddit-logging src
+rm logging.zip
+git add src
+```
+
+Восстанавливаем разрушенное:
+``` bash
+git checkout HEAD src/comment/Dockerfile
+git checkout HEAD src/post-py/Dockerfile
+git checkout HEAD src/ui/Dockerfile
+```
+
+Собираем собственные docker образы сервисов
+с новыми тэгами logging
+``` text
+for i in ui post-py comment
+do
+  cd src/$i; bash docker_build.sh; cd -
+done
+```
 
 
 # HW24. Контейнерная оркестрация.
