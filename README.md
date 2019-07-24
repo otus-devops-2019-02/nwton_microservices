@@ -1609,8 +1609,50 @@ gcloud compute firewall-rules create kibana-default --allow tcp:5601
 docker build -t $USER_NAME/fluentd ../logging/fluentd
 
 docker-compose -f docker-compose-logging.yml up -d
+
+docker-compose -f docker-compose-logging.yml up -d fluentd
 ```
 
+### Тестирование логов
+
+На время тестирования логирования можно мониторинг остановить,
+иначе каждые 5 секунд идёт обращение к /metrics и /healthcheck
+и дальше смотрил логи онлайн
+``` text
+docker-compose -f docker-compose-monitoring.yml stop
+
+docker-compose logs -f post
+```
+
+Переключаемся на сбор логов [для docker через драйвер ﬂuentd](https://docs.docker.com/config/containers/logging/fluentd/)
+``` text
+docker-compose -f docker-compose-logging.yml up -d
+
+docker-compose down
+docker-compose up -d
+```
+
+И настраиваем http://KIBANA:5601/ на fluentd-*
+
+Пересборка fluentd:
+``` bash
+docker build -t $USER_NAME/fluentd ../logging/fluentd
+docker-compose -f docker-compose-logging.yml up -d fluentd
+```
+
+Или полный перезапуск логгирования
+``` bash
+docker-compose -f docker-compose-logging.yml down
+docker-compose -f docker-compose-logging.yml up -d
+```
+
+Открываем порты для zipkin и делаем полный перезапуск
+``` bash
+gcloud compute firewall-rules create zipkin-default --allow tcp:9411
+
+docker-compose -f docker-compose-logging.yml -f docker-compose.yml down
+docker-compose -f docker-compose-logging.yml -f docker-compose.yml up -d
+```
 
 # HW24. Контейнерная оркестрация.
 ## Только теория.
