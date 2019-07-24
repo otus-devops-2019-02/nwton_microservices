@@ -1304,6 +1304,7 @@ docker-compose up -d
 docker-compose -f docker-compose-monitoring.yml up -d
 ```
 
+### cAdvisor
 Добавляем [cAdvisor](https://github.com/google/cadvisor)
 ``` bash
 gcloud compute firewall-rules create cadvisor-default --allow tcp:8080
@@ -1314,6 +1315,7 @@ docker-compose -f docker-compose-monitoring.yml down
 docker-compose -f docker-compose-monitoring.yml up -d
 ```
 
+### Grafana
 Добавляем [Grafana](https://grafana.com/)
 ``` bash
 gcloud compute firewall-rules create grafana-default --allow tcp:3000
@@ -1358,6 +1360,44 @@ docker-compose -f docker-compose-monitoring.yml stop prometheus
 docker-compose -f docker-compose-monitoring.yml up -d prometheus
 ```
 
+### Alertmanager
+
+Для отправки нотификаций в слак канал потребуется создать СВОЙ
+[Incoming Webhook](https://slack.com/apps/A0F7XDUAZ-incoming-webhooks?page=1)
+
+После тестов - там же меняем ссылку и/или отключаем.
+
+``` bash
+gcloud compute firewall-rules create alertmanager-default --allow tcp:9093
+
+docker build -t $USER_NAME/alertmanager ../monitoring/alertmanager
+docker-compose -f docker-compose-monitoring.yml up -d alertmanager
+
+docker build -t $USER_NAME/prometheus ../monitoring/prometheus
+
+docker-compose -f docker-compose-monitoring.yml stop prometheus
+docker-compose -f docker-compose-monitoring.yml up -d prometheus
+
+docker-compose stop post
+docker-compose up -d post
+
+docker-compose -f docker-compose-monitoring.yml down
+docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+### Завершение
+``` bash
+docker login
+
+docker push $USER_NAME/ui
+docker push $USER_NAME/comment
+docker push $USER_NAME/post
+docker push $USER_NAME/prometheus
+docker push $USER_NAME/alertmanager
+
+docker-machine rm docker-host
+```
+
 ## В процессе сделано:
 - Создал инстанс в GCP с docker через docker-machine
 - Из файла docker-compose мониторинг выделен в отдельный файл
@@ -1366,7 +1406,13 @@ docker-compose -f docker-compose-monitoring.yml up -d prometheus
   - Добавил официальный дашбоард **Docker and system monitoring**
   - Создал дашборд **UI_Service_Monitoring.json**
   - Создал дашборд **Business_Logic_Monitoring.json**
-...
+- Добавил alertmanager с отправкой в slack
+- собранные docker образы выложены на [Docker Hub](https://hub.docker.com/u/nwton/)
+  - [nwton/ui](https://hub.docker.com/r/nwton/ui)
+  - [nwton/comment](https://hub.docker.com/r/nwton/comment)
+  - [nwton/post](https://hub.docker.com/r/nwton/post)
+  - [nwton/prometheus](https://hub.docker.com/r/nwton/prometheus)
+  - [nwton/alertmanager](https://hub.docker.com/r/nwton/alertmanager)
 
 ## Как запустить проект:
 - через docker-machine или ENV переменную подключиться
