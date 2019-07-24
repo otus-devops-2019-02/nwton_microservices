@@ -1654,6 +1654,50 @@ docker-compose -f docker-compose-logging.yml -f docker-compose.yml down
 docker-compose -f docker-compose-logging.yml -f docker-compose.yml up -d
 ```
 
+### Завершение
+``` bash
+docker login
+
+docker push $USER_NAME/ui
+docker push $USER_NAME/comment
+docker push $USER_NAME/post
+
+docker push $USER_NAME/prometheus
+docker push $USER_NAME/alertmanager
+
+docker push $USER_NAME/fluentd
+
+docker-machine rm docker-host
+```
+
+## В процессе сделано:
+- Создал инстанс в GCP с docker через docker-machine
+- Добавлен compose файл для развертывания EFK
+- Для сервисов ui и post настроено логгирование во fluentd
+- Собрал собственный fluentd контейнер
+- Изучил kibana
+- Добавил поддержку zipkin
+- собранные docker образы выложены на [Docker Hub](https://hub.docker.com/u/nwton/)
+  - [nwton/ui](https://hub.docker.com/r/nwton/ui)
+  - [nwton/comment](https://hub.docker.com/r/nwton/comment)
+  - [nwton/post](https://hub.docker.com/r/nwton/post)
+  - [nwton/prometheus](https://hub.docker.com/r/nwton/prometheus)
+  - [nwton/alertmanager](https://hub.docker.com/r/nwton/alertmanager)
+  - [nwton/fluentd](https://hub.docker.com/r/nwton/fluentd)
+
+## Как запустить проект:
+- через docker-machine или ENV переменную подключиться
+  к удаленному хосту с docker и запустить
+``` bash
+cd docker
+docker-compose up -d
+docker-compose -f docker-compose-monitoring.yml up -d
+docker-compose -f docker-compose-logging.yml up -d
+```
+
+## Как проверить работоспособность:
+- Перейти по ссылке http://_IP_docker_host_:9090/
+
 # HW24. Контейнерная оркестрация.
 ## Только теория.
 
