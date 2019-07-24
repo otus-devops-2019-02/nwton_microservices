@@ -1507,6 +1507,109 @@ gcloud compute firewall-rules create kibana-default --allow tcp:5601
 docker-compose -f docker-compose-logging.yml up -d
 ```
 
+### Дебажим запуск контейнера
+
+``` text
+$ docker ps -a
+CREATED              STATUS                      PORTS                    NAMES
+About a minute ago   Up About a minute                                    stage_post_1
+About a minute ago   Up About a minute           0.0.0.0:9292->9292/tcp   stage_ui_1
+About a minute ago   Exited (1) 12 seconds ago                            stage_comment_1
+comment:logging        "puma"                   About a minute ago   Exited (1) 12 seconds ago                            stage_comment_1
+
+$ docker run -it nwton/comment:logging sh
+/app # puma
+Puma starting in single mode...
+* Version 3.10.0 (ruby 2.5.5-p157), codename: Russell's Teapot
+* Min threads: 0, max threads: 16
+* Environment: development
+! Unable to load application: TZInfo::DataSourceNotFound: No source of timezone data could be found.
+Please refer to http://tzinfo.github.io/datasourcenotfound for help resolving this error.
+Traceback (most recent call last):
+        39: from /usr/bin/puma:23:in `<main>'
+        38: from /usr/bin/puma:23:in `load'
+        37: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/bin/puma:10:in `<top (required)>'
+        36: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/lib/puma/cli.rb:77:in `run'
+        35: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/lib/puma/launcher.rb:183:in `run'
+        34: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/lib/puma/single.rb:87:in `run'
+        33: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/lib/puma/runner.rb:138:in `load_and_bind'
+        32: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/lib/puma/configuration.rb:243:in `app'
+        31: from /usr/lib/ruby/gems/2.5.0/gems/puma-3.10.0/lib/puma/configuration.rb:314:in `load_rackup'
+        30: from /usr/lib/ruby/gems/2.5.0/gems/rack-2.0.5/lib/rack/builder.rb:40:in `parse_file'
+        29: from /usr/lib/ruby/gems/2.5.0/gems/rack-2.0.5/lib/rack/builder.rb:49:in `new_from_string'
+        28: from /usr/lib/ruby/gems/2.5.0/gems/rack-2.0.5/lib/rack/builder.rb:49:in `eval'
+        27: from config.ru:in `<main>'
+        26: from config.ru:in `new'
+        25: from /usr/lib/ruby/gems/2.5.0/gems/rack-2.0.5/lib/rack/builder.rb:55:in `initialize'
+        24: from /usr/lib/ruby/gems/2.5.0/gems/rack-2.0.5/lib/rack/builder.rb:55:in `instance_eval'
+        23: from config.ru:1:in `block in <main>'
+        22: from /usr/lib/ruby/2.5.0/rubygems/core_ext/kernel_require.rb:59:in `require'
+        21: from /usr/lib/ruby/2.5.0/rubygems/core_ext/kernel_require.rb:59:in `require'
+        20: from /app/comment_app.rb:49:in `<top (required)>'
+        19: from /app/comment_app.rb:49:in `new'
+        18: from /usr/lib/ruby/gems/2.5.0/gems/rufus-scheduler-3.4.2/lib/rufus/scheduler.rb:89:in `initialize'
+        17: from /usr/lib/ruby/gems/2.5.0/gems/rufus-scheduler-3.4.2/lib/rufus/scheduler.rb:543:in `start'
+        16: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:265:in `now'
+        15: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:19:in `now'
+        14: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:19:in `new'
+        13: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:303:in `initialize'
+        12: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:275:in `get_tzone'
+        11: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:147:in `get_tzone'
+        10: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:171:in `local_tzone'
+         9: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:626:in `determine_local_tzone'
+         8: from /usr/lib/ruby/gems/2.5.0/gems/et-orbi-1.0.8/lib/et-orbi.rb:687:in `determine_local_tzones'
+         7: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/timezone.rb:124:in `all'
+         6: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/timezone.rb:130:in `all_identifiers'
+         5: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/timezone.rb:661:in `data_source'
+         4: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/data_source.rb:39:in `get'
+         3: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/data_source.rb:39:in `synchronize'
+         2: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/data_source.rb:40:in `block in get'
+         1: from /usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/data_source.rb:179:in `create_default_data_source'
+/usr/lib/ruby/gems/2.5.0/gems/tzinfo-1.2.3/lib/tzinfo/data_source.rb:182:in `rescue in create_default_data_source': No source of timezone data could be found. (TZInfo::DataSourceNotFound)
+Please refer to http://tzinfo.github.io/datasourcenotfound for help resolving this error.
+/app #
+```
+
+### Обновляем исходники до ветки microservices
+Обновляем исходный код [на версию microservices](https://github.com/express42/reddit/tree/microservices)
+``` bash
+rm -rf src/
+wget https://github.com/express42/reddit/archive/microservices.zip
+unzip microservices.zip
+mv reddit-microservices src
+rm microservices.zip
+git add src
+```
+
+Восстанавливаем разрушенное и файлы сборки с правильными тэгами:
+``` bash
+git checkout HEAD src/comment/Dockerfile
+git checkout HEAD src/post-py/Dockerfile
+git checkout HEAD src/ui/Dockerfile
+
+git checkout HEAD src/comment/docker_build.sh
+git checkout HEAD src/post-py/docker_build.sh
+git checkout HEAD src/ui/docker_build.sh
+```
+
+Собираем собственные docker образы сервисов
+с новыми тэгами logging
+``` text
+for i in ui post-py comment
+do
+  cd src/$i; bash docker_build.sh; cd -
+done
+```
+
+Запускаемся (старое будет прибито)
+``` bash
+cd docker
+docker ps -a
+docker-compose up -d --remove-orphans
+docker-compose -f docker-compose-monitoring.yml up -d
+docker-compose -f docker-compose-logging.yml up -d
+```
+
 
 # HW24. Контейнерная оркестрация.
 ## Только теория.
