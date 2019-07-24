@@ -1489,24 +1489,6 @@ docker-compose up -d
 docker-compose -f docker-compose-monitoring.yml up -d
 ```
 
-### Добавляем EFK
-
-В этом ДЗ мы рассмотрим пример системы централизованного логирования
-на примере Elastic стека (ранее известного как ELK), который включает
-в себя 3 осовных компонента:
-- ElasticSearch (TSDB и поисковый движок для хранения данных)
-- Logstash (для агрегации и трансформации данных)
-- Kibana (для визуализации)
-
-Однако для агрегации логов вместо Logstash мы будем использовать Fluentd, таким образом получая еще одно популярное сочетание этих инструментов, получившее название EFK.
-
-Открываем порты и запускаем
-``` bash
-gcloud compute firewall-rules create kibana-default --allow tcp:5601
-
-docker-compose -f docker-compose-logging.yml up -d
-```
-
 ### Дебажим запуск контейнера
 
 ``` text
@@ -1607,6 +1589,25 @@ cd docker
 docker ps -a
 docker-compose up -d --remove-orphans
 docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+### Добавляем EFK
+
+В этом ДЗ мы рассмотрим пример системы централизованного логирования
+на примере Elastic стека (ранее известного как ELK), который включает
+в себя 3 осовных компонента:
+- ElasticSearch (TSDB и поисковый движок для хранения данных)
+- Logstash (для агрегации и трансформации данных)
+- Kibana (для визуализации)
+
+Однако для агрегации логов вместо Logstash мы будем использовать Fluentd, таким образом получая еще одно популярное сочетание этих инструментов, получившее название EFK.
+
+Открываем порты и запускаем
+``` bash
+gcloud compute firewall-rules create kibana-default --allow tcp:5601
+
+docker build -t $USER_NAME/fluentd ../logging/fluentd
+
 docker-compose -f docker-compose-logging.yml up -d
 ```
 
