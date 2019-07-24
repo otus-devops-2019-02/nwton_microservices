@@ -1160,8 +1160,17 @@ docker-machine create --driver google \
     --google-zone europe-west1-b \
     docker-host
 
-# configure local env
+# Настроить докер клиент на удалённый докер
 eval $(docker-machine env docker-host)
+
+# Переключение на локальный докер
+eval $(docker-machine env --unset)
+
+# Просмотр IP удалённого докера
+$ docker-machine ip docker-host
+
+# Удаление докер хоста
+$ docker-machine rm docker-host
 ```
 
 ## Работа по ДЗ
@@ -1228,7 +1237,7 @@ docker login
 docker push $USER_NAME/ui
 docker push $USER_NAME/comment
 docker push $USER_NAME/post
-docker push $USER_NAME/prometheus 
+docker push $USER_NAME/prometheus
 ```
 
 Удаляем временный хост для docker
@@ -1279,6 +1288,97 @@ docker-compose up -d
 
 # HW21. Мониторинг приложения и инфраструктуры
 ## monitoring-2
+
+## Начальная настройка окружения
+
+Создадим Docker хост в GCE и настроим локальное окружение на работу с ним.
+Идентично HW20.
+
+## Работа по ДЗ
+Оставим описание приложений в docker-compose.yml, а мониторинг выделим в отдельный файл docker-composemonitoring.yml.
+
+``` bash
+# Для запуска приложений:
+docker-compose up -d
+# Для запуска мониторинга:
+docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+Добавляем [cAdvisor](https://github.com/google/cadvisor)
+``` bash
+gcloud compute firewall-rules create cadvisor-default --allow tcp:8080
+
+docker build -t $USER_NAME/prometheus ../monitoring/prometheus
+
+docker-compose -f docker-compose-monitoring.yml down
+docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+Добавляем [Grafana](https://grafana.com/)
+``` bash
+gcloud compute firewall-rules create grafana-default --allow tcp:3000
+
+docker-compose -f docker-compose-monitoring.yml up -d grafana
+docker-compose -f docker-compose-monitoring.yml stop grafana
+docker-compose -f docker-compose-monitoring.yml up -d grafana
+```
+
+Настройка Grafana:
+- Делаем Add datasource
+  - Name: Prometheus Server
+  - Type: Prometheus
+  - URL: http://prometheus:9090
+  - Access: Proxy
+- Добавляем Dashboard
+  - [Поиск](https://grafana.com/grafana/dashboards)
+  - [Поиск prometheus+grafana](https://grafana.com/grafana/dashboards?dataSource=prometheus&search=docker)
+  - [Docker and system monitoring by Thibaut Mottet](https://grafana.com/grafana/dashboards/893)
+  - [Download JSON](https://grafana.com/api/dashboards/893/revisions/5/download)
+
+Загружаем Dashboard
+``` bash
+mkdir -p ../monitoring/grafana/dashboards
+curl \
+    -L https://grafana.com/api/dashboards/893/revisions/5/download \
+    -o ../monitoring/grafana/dashboards/DockerMonitoring.json
+```
+
+После этого Import (http://IP:3000/dashboard/import)
+- либо ручное копирование JSON в интерфейс
+- либо через указание ID = 893
+
+Добавляем собственные метрики:
+- [сервис UI](https://github.com/express42/reddit/commit/e443f6ab4dcf25f343f2a50c01916d750fc2d096)
+- [сервис Post](https://github.com/express42/reddit/commit/d8a0316c36723abcfde367527bad182a8e5d9cf2)
+
+``` bash
+docker build -t $USER_NAME/prometheus ../monitoring/prometheus
+
+docker-compose -f docker-compose-monitoring.yml stop prometheus
+docker-compose -f docker-compose-monitoring.yml up -d prometheus
+```
+
+## В процессе сделано:
+- Создал инстанс в GCP с docker через docker-machine
+- Из файла docker-compose мониторинг выделен в отдельный файл
+- Добавил в мониторинг cAdvisory
+- Добавил в мониторинг Grafana
+  - Добавил официальный дашбоард **Docker and system monitoring**
+  - Создал дашборд **UI_Service_Monitoring.json**
+  - Создал дашборд **Business_Logic_Monitoring.json**
+...
+
+## Как запустить проект:
+- через docker-machine или ENV переменную подключиться
+  к удаленному хосту с docker и запустить
+``` bash
+cd docker
+docker-compose up -d
+docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+## Как проверить работоспособность:
+- Перейти по ссылке http://_IP_docker_host_:9090/
 
 
 # HW22. Применение инструментов для обработки лог данных
