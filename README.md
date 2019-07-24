@@ -1439,8 +1439,23 @@ docker-compose -f docker-compose-monitoring.yml up -d
 Создадим Docker хост в GCE и настроим локальное окружение на работу с ним.
 Идентично HW20.
 
+Дополнение: можно открывать необходимые порты для конкретного докер
+хоста сразу при его создании, с использованием google-open-port:
+``` bash
+$ docker-machine create --driver google \
+    --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-oscloud/global/images/family/ubuntu-1604-lts \
+    --google-machine-type n1-standard-1 \
+    --google-open-port 5601/tcp \
+    --google-open-port 9292/tcp \
+    --google-open-port 9411/tcp \
+    logging
+
+$ eval $(docker-machine env logging)
+```
+
 ## Работа по ДЗ
 
+### Обновляем исходники
 Обновляем исходный код [на версию](https://github.com/express42/reddit/tree/logging)
 ``` bash
 rm -rf src/
@@ -1465,6 +1480,31 @@ for i in ui post-py comment
 do
   cd src/$i; bash docker_build.sh; cd -
 done
+```
+
+Запускаемся
+``` bash
+cd docker
+docker-compose up -d
+docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+### Добавляем EFK
+
+В этом ДЗ мы рассмотрим пример системы централизованного логирования
+на примере Elastic стека (ранее известного как ELK), который включает
+в себя 3 осовных компонента:
+- ElasticSearch (TSDB и поисковый движок для хранения данных)
+- Logstash (для агрегации и трансформации данных)
+- Kibana (для визуализации)
+
+Однако для агрегации логов вместо Logstash мы будем использовать Fluentd, таким образом получая еще одно популярное сочетание этих инструментов, получившее название EFK.
+
+Открываем порты и запускаем
+``` bash
+gcloud compute firewall-rules create kibana-default --allow tcp:5601
+
+docker-compose -f docker-compose-logging.yml up -d
 ```
 
 
