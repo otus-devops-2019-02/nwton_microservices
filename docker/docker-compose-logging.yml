@@ -1,0 +1,41 @@
+version: '3.4'
+services:
+  fluentd:
+    image: ${USERNAME}/fluentd
+    ports:
+      - "${FLUENTD_PORT}:${FLUENTD_PORT}"
+      - "${FLUENTD_PORT}:${FLUENTD_PORT}/udp"
+
+  elasticsearch:
+    image: elasticsearch:5.6
+    expose:
+      - ${ELASTICSEARCH_PORT}
+    ports:
+      - "${ELASTICSEARCH_PORT}:${ELASTICSEARCH_PORT}"
+
+  kibana:
+    image: kibana:5.6.0
+    ports:
+      - "${KIBANA_PORT}:${KIBANA_PORT}"
+
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - "${ZIPKIN_PORT}:${ZIPKIN_PORT}"
+    networks:
+      - front_net
+      - back_net
+
+networks:
+  back_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.2.0/24
+  front_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.1.0/24
