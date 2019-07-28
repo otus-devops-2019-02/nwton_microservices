@@ -1,0 +1,11 @@
+# ignore private files
+ca.csr
+ca-key.pem
+ca.pem
+
+admin.csr
+admin-key.pem
+admin.pem
+
+*.pem
+*.csr
