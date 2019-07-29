@@ -1,20 +1,27 @@
 ---
-apiVersion: apps/v1
+apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: comment-deployment
+  name: comment
+  labels:
+    app: reddit
+    component: comment
 spec:
-  replicas: 1
-  # Указатель на то, какие поды нужно поддерживать в нужном количестве
+  replicas: 3
   selector:
     matchLabels:
-      app: comment
+      app: reddit
+      component: comment
   template:
     metadata:
       name: comment
       labels:
-        app: comment
+        app: reddit
+        component: comment
     spec:
       containers:
       - image: nwton/comment
         name: comment
+        env:
+        - name: COMMENT_DATABASE_HOST
+          value: comment-db
