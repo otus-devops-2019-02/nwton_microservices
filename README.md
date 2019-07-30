@@ -3087,6 +3087,348 @@ ui-deployment-5bc65bd775-gkhzx       1/1     Running   0          2m6s
 # HW26. Основные модели безопасности и контроллеры в Kubernetes
 ## kubernetes-2
 
+## Локальное окружение
+
+### kubectl
+kubectl для WSL
+(по методу из kubernetes-the-hard-way)
+- https://kubernetes.io/docs/tasks/tools/install-kubectl/
+```bash
+cd ~/bin/
+wget https://storage.googleapis.com/kubernetes-release/release/v1.12.0/bin/linux/amd64/kubectl
+chmod +x kubectl
+kubectl version --client
+cd -
+```
+
+Более свежие версии
+```bash
+cd ~/bin/
+curl -L https://storage.googleapis.com/kubernetes-release/release/v1.12.0/bin/linux/amd64/kubectl -o kubectl-v1.12.0
+
+curl -L https://storage.googleapis.com/kubernetes-release/release/v1.15.0/bin/linux/amd64/kubectl -o kubectl-v1.15.0
+
+curl -L https://storage.googleapis.com/kubernetes-release/release/v1.15.1/bin/linux/amd64/kubectl -o kubectl-v1.15.1
+
+rm kubectl
+ln -s kubectl-v1.15.1 kubectl
+chmod +x kubectl
+
+kubectl version --client
+cd -
+```
+
+### minicube
+minicube для Windows
+- https://kubernetes.io/docs/tasks/tools/install-minikube/
+``` text
+choco install minikube kubernetes-cli
+
+kubernetes-cli v1.15.1 [Approved]
+Minikube v1.2.0 [Approved]
+kubernetes-cli v1.15.1 already installed.
+```
+
+Cleanup local state
+``` text
+# If you have previously installed minikube, and run:
+minikube start
+# And this command returns an error:
+# machine does not exist
+# You need to clear minikube’s local state:
+minikube delete
+```
+
+Whats next
+- https://kubernetes.io/docs/setup/learning-environment/minikube/
+
+Запуск с использованием Hyper-V (вместо Virtualbox)
+``` text
+# указание драйвера и параметров при запуске
+minikube start --vm-driver=hyperv
+minikube start --memory=4096
+
+# или настройка параметров
+minikube config set vm-driver hyperv
+
+# прочие параметры
+minikube config set WantReportErrorPrompt false
+minikube config set memory 2048
+minikube config set memory 4096
+minikube config set memory 6144
+minikube config set disk-size 32GB
+
+# откатываемся на virtualbox и стартуем
+minikube config set vm-driver virtualbox
+minikube start
+* minikube v1.2.0 on windows (amd64)
+* Creating virtualbox VM (CPUs=2, Memory=2048MB, Disk=20000MB) ...
+* Configuring environment for Kubernetes v1.15.0 on Docker 18.09.6
+* Downloading kubeadm v1.15.0
+* Downloading kubelet v1.15.0
+* Pulling images ...
+* Launching Kubernetes ...
+* Verifying: apiserver proxy etcd scheduler controller dns
+* Done! kubectl is now configured to use "minikube"
+```
+
+**Важно**: minikube не работает под virtualbox 5.2.30, необходимо
+обновляться до 6.0.10, тут работает немного получше. Дополнительно
+ещё можно снизить количество одновременно запускаемых реплик.
+После запуска первых подов перестают загружаться docker images,
+при этом не зависит от порядка деплоя.
+От объема выделенной памяти виртуалке ситуация зависит слабо.
+Проверено на Windows и Linux рабочих станциях.
+Чтобы заработало пришлось несколько раз перезапускать minikube.
+
+## Работа по ДЗ
+
+### Запуск и проверка
+Информацию о контекстах kubectl сохраняет в файле **~/.kube/config**
+``` text
+PS C:\> cd ~
+
+PS C:\Users\admin> kubectl get nodes
+NAME       STATUS   ROLES    AGE   VERSION
+minikube   Ready    master   16m   v1.15.0
+
+PS C:\Users\admin> cat ~/.kube/config
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: C:\Users\admin\.minikube\ca.crt
+    server: https://192.168.99.100:8443
+  name: minikube
+contexts:
+- context:
+    cluster: minikube
+    user: minikube
+  name: minikube
+current-context: minikube
+kind: Config
+preferences: {}
+users:
+- name: minikube
+  user:
+    client-certificate: C:\Users\admin\.minikube\client.crt
+    client-key: C:\Users\admin\.minikube\client.key
+```
+
+Обычно порядок конфигурирования kubectl следующий:
+``` text
+1) Создать cluster:
+$ kubectl config set-cluster … cluster_name
+2) Создать данные пользователя (credentials)
+$ kubectl config set-credentials … user_name
+3) Создать контекст
+$ kubectl config set-context context_name \
+--cluster=cluster_name \
+--user=user_name
+4) Использовать контекст
+$ kubectl config use-context context_name
+
+Текущий контекст можно увидеть так:
+$ kubectl config current-context
+minikube
+
+Список всех контекстов можно увидеть так:
+$ kubectl config get-contexts
+```
+
+Проверяем:
+``` text
+PS C:\Users\admin> kubectl get nodes
+NAME       STATUS   ROLES    AGE   VERSION
+minikube   Ready    master   16m   v1.15.0
+
+PS C:\Users\admin> kubectl config current-context
+minikube
+
+PS C:\Users\admin> kubectl config get-contexts
+CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
+*         minikube   minikube   minikube
+```
+
+### Deployment
+
+``` bash
+kubectl apply -f ui-deployment.yml
+kubectl get deployment
+
+# kubectl apply -f ./kubernetes/reddit
+
+kubectl get pods --selector component=ui
+# NAME                  READY   STATUS    RESTARTS   AGE
+# ui-5868d4bf65-5pqhs   1/1     Running   0          3m
+# ui-5868d4bf65-llct9   1/1     Running   0          3m
+# ui-5868d4bf65-ltcxk   1/1     Running   0          3m
+
+kubectl port-forward <pod-name> 8080:9292
+# http://localhost:8080/
+
+kubectl apply -f comment-deployment.yml
+kubectl apply -f post-deployment.yml
+
+kubectl apply -f mongo-deployment.yml
+
+## cleanup if we need
+kubectl delete --all pods --namespace=default
+kubectl delete --all deployments --namespace=default
+
+kubectl get deployment
+kubectl get pods
+```
+
+### Services
+
+``` bash
+kubectl get deployment
+kubectl get pods
+
+kubectl describe service comment | grep Endpoints
+kubectl exec -ti <pod-name> nslookup comment
+
+
+kubectl apply -f ui-service.yml
+kubectl apply -f comment-service.yml
+kubectl apply -f post-service.yml
+kubectl apply -f mongo-service.yml
+
+kubectl get pods
+kubectl port-forward <pod-name> 9292:9292
+# http://localhost:9292/
+
+kubectl logs <post-pod>
+
+kubectl apply -f ...
+
+kubectl logs <post-pod>
+
+$ kubectl delete -f mongodb-service.yml
+Или
+$ kubectl delete service mongodb
+
+## NodePort
+minikube service ui
+
+minikube services list
+
+minikube addons list
+kubectl get pods
+```
+
+### Namespaces
+
+``` bash
+kubectl get all -n kube-system --selector k8s-app=kubernetes-dashboard
+
+minikube service kubernetes-dashboard -n kube-system
+
+kubectl apply -f dev-namespace.yml
+
+kubectl apply -n dev -f ...
+
+minikube service ui -n dev
+
+kubectl apply -f ui-deployment.yml -n dev
+```
+
+## Google Kubernetes Engine
+
+Создаём через панель кластер, затем подключаемся:
+``` bash
+gcloud container clusters get-credentials standard-cluster-1 \
+  --zone europe-west1-c --project docker-245721
+
+kubectl config current-context
+# gke_docker-245721_europe-west1-c_standard-cluster-1
+```
+
+Запустим наше приложение в GKE
+``` bash
+# Создадим dev namespace
+kubectl apply -f ./kubernetes/reddit/dev-namespace.yml
+# Задеплоим все компоненты приложения в namespace dev:
+kubectl apply -f ./kubernetes/reddit/ -n dev
+```
+
+Откроем диапазон портов kubernetes для публикации сервисов
+``` bash
+Настройте:
+• Название - произвольно, но понятно
+• Целевые экземпляры - все экземпляры в сети
+• Диапазоны IP-адресов источников  - 0.0.0.0/0
+Протоколы и порты - Указанные протоколы и порты
+tcp:30000-32767
+
+gcloud compute --project=docker-245721 \
+  firewall-rules create temp-kubernetes-default \
+  --direction=INGRESS --priority=1000 \
+  --network=default --action=ALLOW \
+  --rules=tcp:30000-32767 --source-ranges=0.0.0.0/0
+```
+
+Проверка
+``` bash
+kubectl get pods -n dev
+
+# Найдите внешний IP-адрес любой ноды из кластера
+# либо в веб-консоли, либо External IP в выводе:
+kubectl get nodes -o wide
+
+# Найдите порт публикации сервиса ui
+kubectl describe service ui -n dev | grep NodePort
+Type:                     NodePort
+NodePort:                 <unset>  32092/TCP
+
+# Идем по адресу http://<node-ip>:<NodePort>
+```
+
+### Dashboard in GKE
+
+``` bash
+$ kubectl proxy
+# Заходим по адресу http://localhost:8001/ui
+```
+
+Правильный адрес:
+- [dashboard](http://127.0.0.1:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/#!/overview?namespace=default)
+
+Security RBAC
+``` bash
+kubectl create clusterrolebinding kubernetes-dashboard \
+  --clusterrole=cluster-admin \
+  --serviceaccount=kube-system:kubernetes-dashboard
+```
+
+## В процессе сделано:
+План:
+- Развернуть локальное окружение для работы с Kubernetes
+- Развернуть Kubernetes в GKE
+- Запустить reddit в Kubernetes
+Выполнено:
+- Установил minikube + kubectl последних версий локально
+- Изменил файлы XX-deployment.yml
+- Проверил проброс портов через localhost - всё ОК
+- Создал файлы XX-service.yml
+- Создал файл описания namespaces dev-namespace.yml
+- Развернул k8s в GKE
+- Запустил reddit в k8s GKE
+- Сделал скриншот интерфейса приложения
+- Запустил dashboard в GKE и настроил RBAC
+
+## Как запустить проект:
+Подключаемся к кластеру k8s и деплоим приложение
+в тестовый неймспейс dev:
+``` bash
+# gcloud container clusters get-credentials ...
+kubectl apply -f ./kubernetes/reddit/dev-namespace.yml
+kubectl apply -f ./kubernetes/reddit/ -n dev
+```
+
+## Как проверить работоспособность:
+- Идем по адресу http://<node-ip>:32092
+
 
 # HW27. Ingress-контроллеры и сервисы в Kubernetes.
 ## kubernetes-3
