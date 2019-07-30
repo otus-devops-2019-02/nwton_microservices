@@ -1,0 +1,27 @@
+---
+comment:
+  service:
+    internalPort: 9292
+    externalPort: 9292
+
+  image:
+    repository: nwton/comment
+    tag: latest
+
+post:
+  service:
+    internalPort: 5000
+    externalPort: 5000
+
+  image:
+    repository: nwton/post
+    tag: latest
+
+ui:
+  service:
+    internalPort: 9292
+    externalPort: 9292
+
+  image:
+    repository: nwton/ui
+    tag: latest
