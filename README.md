@@ -4642,5 +4642,528 @@ kubectl get ingress
 # HW29. Kubernetes. Мониторинг и логирование
 ## kubernetes-5
 
+## Подготовка
+
+У вас должен быть развернуть кластер k8s:
+- минимум 2 ноды g1-small (1,5 ГБ)
+- минимум 1 нода n1-standard-2 (7,5 ГБ)
+
+В настройках:
+- Stackdriver Logging - Отключен
+- Stackdriver Monitoring - Отключен
+- Устаревшие права доступа - Включено
+
+Дефолтные настройки кластера в GCE:
+- Stackdriver Kubernetes Engine Monitoring	= Отключено
+- Прежняя версия Stackdriver Logging	= Включен
+- Прежняя версия Stackdriver Monitoring	= Включен
+
+Из Helm-чарта установим ingress-контроллер nginx
+```bash
+helm install stable/nginx-ingress --name nginx
+
+kubectl --namespace default get services \
+  -o wide -w nginx-nginx-ingress-controller
+
+# NOTES:
+# The nginx-ingress controller has been installed.
+# It may take a few minutes for the LoadBalancer IP to be available.
+# You can watch the status by running
+# kubectl --namespace default get services \
+#   -o wide -w nginx-nginx-ingress-controller'
+
+# An example Ingress that makes use of the controller:
+
+#   apiVersion: extensions/v1beta1
+#   kind: Ingress
+#   metadata:
+#     annotations:
+#       kubernetes.io/ingress.class: nginx
+#     name: example
+#     namespace: foo
+#   spec:
+#     rules:
+#       - host: www.example.com
+#         http:
+#           paths:
+#             - backend:
+#                 serviceName: exampleService
+#                 servicePort: 80
+#               path: /
+#     # This section is only required if TLS is to be enabled for the Ingress
+#     tls:
+#         - hosts:
+#             - www.example.com
+#           secretName: example-tls
+
+# If TLS is enabled for the Ingress, a Secret containing the certificate and key must also be provided:
+
+#   apiVersion: v1
+#   kind: Secret
+#   metadata:
+#     name: example-tls
+#     namespace: foo
+#   data:
+#     tls.crt: <base64 encoded cert>
+#     tls.key: <base64 encoded key>
+#   type: kubernetes.io/tls
+
+```
+
+Найдите IP-адрес, выданный nginx’у
+```bash
+$ kubectl get svc
+NAME                                  TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                      AGE
+kubernetes                            ClusterIP      10.83.0.1      <none>         443/TCP                      19h
+nginx-nginx-ingress-controller        LoadBalancer   10.83.7.21     34.76.78.159   80:30786/TCP,443:31917/TCP   90m
+nginx-nginx-ingress-default-backend   ClusterIP      10.83.12.162   <none>         80/TCP                       90m
+```
+
+Поместите запись в локальный файл /etc/hosts
+```bash
+# для windows %WinDir%\System32\Drivers\Etc
+echo "34.76.78.159 reddit reddit-prometheus reddit-grafana reddit-non-prod production reddit-kibana staging prod" >> /etc/hosts
+```
+
+## Мониторинг
+
+### Стек
+В задании будем использовать уже знакомые нам инструменты:
+- prometheus - сервер сбора и
+- grafana - сервер визуализации метрик
+- alertmanager - компонент prometheus для алертинга
+- различные экспортеры для метрик prometheus
+Prometheus отлично подходит для работы с контейнерами и
+динамичным размещением сервисов
+
+### Установим Prometheus
+Prometheus будем ставить с помощью Helm чарта
+Загрузим prometheus локально в Charts каталог
+```bash
+$ cd kubernetes/charts && helm fetch --untar stable/prometheus
+```
+
+**Важно**: на слайдах неправильный регистр, у нас папка Charts !
+
+Создайте внутри директории чарта файл custom_values.yml
+Поместите в него содержимое
+- https://gist.githubusercontent.com/chromko/2bd290f7becdf707cde836ba1ea6ec5c/raw/c17372866867607cf4a0445eb519f9c2c377a0ba/gistfile1.txt
+
+Основные отличия от values.yml:
+- отключена часть устанавливаемых сервисов
+  (pushgateway, alertmanager, kube-state-metrics)
+- включено создание Ingress’а для подключения через nginx
+- поправлен endpoint для сбора метрик cadvisor
+- уменьшен интервал сбора метрик (с 1 минуты до 30 секунд)
+
+Запустите Prometheus в k8s из charsts/prometheus
+```bash
+helm upgrade prom . -f custom_values.yml --install
+
+# NOTES:
+# The Prometheus server can be accessed via port 80 on the following DNS name from within your cluster:
+# prom-prometheus-server.default.svc.cluster.local
+
+# From outside the cluster, the server URL(s) are:
+# http://reddit-prometheus
+# For more information on running Prometheus, visit:
+# https://prometheus.io/
+```
+
+Зайдем по ссылке
+http://reddit-prometheus/
+
+### Targets
+
+У нас уже присутствует ряд endpoint’ов для сбора метрик
+- Метрики API-сервера
+- метрики нод с cadvisor’ов
+- сам prometheus
+
+Отметим, что можно собирать метрики cadvisor’а
+(который уже является частью kubelet) через
+проксирующий запрос в kube-api-server
+
+Если зайти по ssh на любую из машин кластера и запросить
+$ curl http://localhost:4194/metrics то получим те же метрики у
+kubelet напрямую
+
+Но вариант с kube-api предпочтительней, т.к. этот трафик
+шифруется TLS и требует аутентификации.
+
+Таргеты для сбора метрик найдены с помощью service discovery
+(SD), настроенного в конфиге prometheus (лежит в custom-values.yml)
+
+Использование SD в kubernetes позволяет нам динамично
+менять кластер (как сами хосты, так и сервисы и приложения)
+Цели для мониторинга находим c помощью запросов к k8s API:
+
+Role объект, который нужно найти:
+• node
+• endpoints
+• pod
+• service
+• ingress
+
+Т.к. сбор метрик prometheus осуществляется поверх
+стандартного HTTP-протокола, то могут понадобится доп.
+настройки для безопасного доступа к метрикам.
+Ниже приведены настройки для сбора метрик из k8s API
+```text
+scheme: https
+tls_config:
+ ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+ insecure_skip_verify: true
+bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+```
+1. Схема подключения - http (default) или https
+2. Конфиг TLS - коревой сертификат сервера для проверки
+достоверности сервера
+3. Токен для аутентификации на сервере
+
+Подробнее о том, как работает relabel_config
+- <https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config>
+
+### Metrics
+Все найденные на эндпоинтах метрики сразу же
+отобразятся в списке (вкладка Graph). Метрики
+Cadvisor начинаются с container_.
+
+Cadvisor собирает лишь информацию о потреблении ресурсов
+и производительности отдельных docker-контейнеров.
+При этом он ничего не знает о сущностях k8s (деплойменты,
+репликасеты, ...).
+
+Для сбора этой информации будем использовать сервис
+[kube-state-metrics](https://github.com/kubernetes/kube-state-metrics)
+
+Он входит в чарт Prometheus. Включим его.
+prometheus/custom_values.yml
+```text
+kubeStateMetrics:
+  ## If false, kube-state-metrics will not be installed
+  ##
+  enabled: true
+```
+
+Обновим релиз prometheus
+```bash
+helm upgrade prom . -f custom_values.yml --install
+```
+
+По аналогии с kube_state_metrics включите (enabled: true)
+поды node-exporter в custom_values.yml.
+Проверьте, что метрики начали собираться с них.
+
+### Метрики приложений
+Запустите приложение из helm чарта reddit
+
+```bash
+helm upgrade reddit-test ./reddit --install
+helm upgrade production --namespace production ./reddit --install
+helm upgrade staging --namespace staging ./reddit --install
+```
+
+Раньше мы *хардкодили* адреса/dns-имена наших
+приложений для сбора метрик с них.
+
+Теперь мы можем использовать механизм ServiceDiscovery
+для обнаружения приложений, запущенных в k8s.
+
+Приложения будем искать так же, как и служебные сервисы k8s.
+
+Модернизируем конфиг prometheus custom_values.yml
+```text
+ - job_name: 'reddit-endpoints'
+ kubernetes_sd_configs:
+ - role: endpoints
+ relabel_configs:
+ - source_labels: [__meta_kubernetes_service_label_app]
+ action: keep
+ regex: reddit
+```
+Используем действие keep, чтобы оставить
+только эндпоинты сервисов с метками **app=reddit**
+
+Мы получили эндпоинты, но что это за поды мы не знаем.
+Добавим метки k8s
+Все лейблы и аннотации k8s изначально отображаются в
+prometheus в формате:
+__meta_kubernetes_service_label_labelname
+__meta_kubernetes_service_annotation_annotationname
+
+Модернизируем конфиг prometheus custom_values.yml
+```text
+custom_values.yml
+ relabel_configs:
+ - action: labelmap
+ regex: __meta_kubernetes_service_label_(.+)
+```
+Отобразить все совпадения групп из regex в label’ы Prometheus
+
+Теперь мы видим лейблы k8s, присвоенные POD’ам
+
+Добавим еще label’ы для prometheus и обновим helm-релиз
+Т.к. метки вида __meta_* не публикуются, то нужно создать
+свои, перенеся в них информацию
+
+Модернизируем конфиг prometheus custom_values.yml
+```text
+ - source_labels: [__meta_kubernetes_namespace]
+ target_label: kubernetes_namespace
+ - source_labels: [__meta_kubernetes_service_name]
+ target_label: kubernetes_name
+```
+Обновите релиз prometheus и ...
+
+Сейчас мы собираем метрики со всех сервисов reddit’а в 1 группе
+target-ов.
+Мы можем отделить target-ы компонент друг от друга (по
+окружениям, по самим компонентам), а также выключать и
+включать опцию мониторинга для них с помощью все тех же labelов.
+Например, добавим в конфиг еще 1 job (ссылка на gist):
+- https://gist.githubusercontent.com/chromko/0d0bf3961b84bc2f0b56b0cd073bc217/raw/c916cbe30a34eceb9389a8b253969dc47a3ab857/gistfile1.txt
+
+Для разных лейблов разные регекспы
+Обновим релиз prometheus и посмотрим:
+Метрики будут отображаться для всех инстансов приложений
+
+Задание 32
+Разбейте конфигурацию job’а `reddit-endpoints`
+(слайд 24) так, чтобы было 3 job’а для каждой из компонент
+приложений (post-endpoints, commentendpoints, ui-endpoints),
+а reddit-endpoints уберите.
+
+Модернизируем конфиг prometheus custom_values.yml
+(Речь идёт про эту часть со слайда 25)
+```text
+ - job_name: 'reddit-endpoints'
+    kubernetes_sd_configs:
+      - role: endpoints
+```
+
+Обновиляем релиз prometheus после каждого изменения
+```bash
+helm upgrade prom . -f custom_values.yml --install
+```
+
+### Визуализация
+
+Поставим также grafana с помощью helm
+**ВАЖНО** Опять ошибки на слайде:
+Вот так, как написано в слайдах - не работает:
+```bash
+helm upgrade --install grafana stable/grafana \
+--set "server.adminPassword=admin" \
+--set "server.service.type=NodePort" \
+--set "server.ingress.enabled=true" \
+--set "server.ingress.hosts={reddit-grafana}"
+
+# NOTES:
+# 1. Get your 'admin' user password by running:
+#
+#    kubectl get secret --namespace default grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+#
+# 2. The Grafana server can be accessed via port 80 on the following
+# DNS name from within your cluster:
+#
+#    grafana.default.svc.cluster.local
+#
+#    Get the Grafana URL to visit by running these commands in the
+# same shell:
+#
+#      export POD_NAME=$(kubectl get pods --namespace default -l "app=grafana,release=grafana" -o jsonpath="{.items[0].metadata.name}")
+#      kubectl --namespace default port-forward $POD_NAME 3000
+#
+# 3. Login with the password from step 1 and the username: admin
+#
+#################################################################################
+######   WARNING: Persistence is disabled!!! You will lose your data when   #####
+######            the Grafana pod is terminated.                            #####
+#################################################################################
+```
+
+**ВАЖНО** Опять ошибки на слайде:
+Вот так - работает:
+```bash
+helm upgrade --install grafana stable/grafana \
+--set "adminPassword=admin" \
+--set "service.type=NodePort" \
+--set "ingress.enabled=true" \
+--set "ingress.hosts={reddit-grafana}"
+
+# NOTES:
+# 1. Get your 'admin' user password by running:
+#
+#    kubectl get secret --namespace default grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+#
+# 2. The Grafana server can be accessed via port 80 on the following
+# DNS name from within your cluster:
+#
+#    grafana.default.svc.cluster.local
+#
+#    From outside the cluster, the server URL(s) are:
+#      http://reddit-grafana
+#
+# 3. Login with the password from step 1 and the username: admin
+```
+
+http://reddit-grafana/
+- admin
+- admin
+
+Добавьте prometheus data-source,
+это будет http://prom-prometheus-server
+
+Адрес найдите из имени сервиса prometheus сервера
+```text
+$ kubectl get svc
+NAME                                  TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                      AGE
+grafana                               ClusterIP      10.83.13.202   <none>         80/TCP                       7m45s
+kubernetes                            ClusterIP      10.83.0.1      <none>         443/TCP                      20h
+nginx-nginx-ingress-controller        LoadBalancer   10.83.7.21     34.76.78.159   80:30786/TCP,443:31917/TCP   141m
+nginx-nginx-ingress-default-backend   ClusterIP      10.83.12.162   <none>         80/TCP                       141m
+prom-prometheus-kube-state-metrics    ClusterIP      None           <none>         80/TCP                       24m
+prom-prometheus-node-exporter         ClusterIP      None           <none>         9100/TCP                     22m
+prom-prometheus-server                LoadBalancer   10.83.3.156    34.76.51.7     80:31326/TCP                 33m
+reddit-test-comment                   ClusterIP      10.83.13.1     <none>         9292/TCP                     20m
+reddit-test-mongodb                   ClusterIP      10.83.13.117   <none>         27017/TCP                    20m
+reddit-test-post                      ClusterIP      10.83.3.8      <none>         5000/TCP                     20m
+reddit-test-ui                        NodePort       10.83.12.148   <none>         9292:30771/TCP               20m
+```
+
+Добавим самый распространенный dashboard для
+отслеживания состояния ресурсов k8s
+- https://grafana.com/dashboards/315
+
+Добавьте собственные дашборды, созданные ранее (в ДЗ по
+мониторингу). Они должны также успешно отобразить данные.
+Должно быть что-то вроде такого:
+
+### Templating
+
+В коде json соответствующий блок templating
+
+Примечание: в новой версии почему-то постоянно пропадает блок
+и все datasource заменяются на хардкод значения, что может
+вызвать проблемы при дальнейшем импорте (если имена отличаются).
+```text
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS_SERVER",
+      "label": "Prometheus Server",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+
+...
+      "datasource": "${DS_PROMETHEUS_SERVER}",
+...
+```
+
+### Смешанные графики
+Импортируйте следующий график (**дашборд !!!**) :
+https://grafana.com/dashboards/741
+На этом графике одновременно используются метрики и
+шаблоны из cAdvisor, и из kube-state-metrics для
+отображения сводной информации по деплойментам
+
+## Логирование
+1. Данную часть ДЗ рекомендуется выполянять уже после
+выполения ДЗ № 25 (по логированию), наработки из
+которого используюстя в данной работе
+3. Выполнение данной части ДЗ не является обязательным
+4. Добавьте label самой мощной ноде в кластере
+
+Снова на слайдах проблема - нужно сначала найти имя
+самой большой ноды, а затем уже вешать лейбл.
+```bash
+kubectl get node
+kubectl label node gke-standard-cluster-1-bigpool-5655fd96-n6s4 elastichost=true
+```
+
+### Стек
+Логирование в k8s будем выстраивать с помощью уже
+известного стека EFK:
+- ElasticSearch - база данных + поисковый движок
+- Fluentd - шипер (отправитель) и агрегатор логов
+- Kibana - веб-интерфейс для запросов в хранилище и
+  отображения их результатов
+
+Создайте файлы в новой папке kubernetes/ef/
+fluentd-ds.yaml (ссылка на gist)
+fluentd-configmap.yaml (ссылка на gist)
+es-service.yaml (ссылка на gist)
+es-statefulSet.yaml (ссылка на gist)
+es-pvc.yaml (ссылка на gist)
+
+Запустите стек в вашем k8s
+```bash
+kubectl apply -f ./efk
+# persistentvolumeclaim/elasticsearch-logging-claim created
+# service/elasticsearch-logging created
+# statefulset.apps/elasticsearch-logging created
+# configmap/fluentd-es-config-v0.1.1 created
+# daemonset.apps/fluentd-es-v2.0.2 created
+```
+
+Kibana поставим из helm чарта
+```text
+helm upgrade --install kibana stable/kibana \
+--set "ingress.enabled=true" \
+--set "ingress.hosts={reddit-kibana}" \
+--set "env.ELASTICSEARCH_URL=http://elasticsearch-logging:9200" \
+--version 0.1.1
+```
+
+http://reddit-kibana/
+
+Создаем индекс на fluentd-*
+
+Откройте вкладку Discover в Kibana и введите в строку поиска выражение
+```text
+kubernetes.labels.component:post OR kubernetes.labels.component:comment OR
+kubernetes.labels.component:ui
+```
+Откройте любой из рез-тов поиска - в нем видно множество инфы о k8s
+
+1. Особенность работы fluentd в k8s состоит в том,
+  что его задача помимо сбора самих логов
+  приложений, сервисов и хостов, также
+  распознать дополнительные метаданные (как
+  правило это дополнительные поля с лейблами)
+2. Откуда и какие логи собирает fluentd - видно в
+  его fluentd-configmap.yaml и в fluentd-ds.yaml
+3. Общая схема работы fluentd представлена на след. слайде
+
+## Работа по ДЗ
+All done
+
+## В процессе сделано:
+План:
+- Развертывание Prometheus в k8s
+- Настройка Prometheus и Grafana для сбора метрик
+- Настройка EFK для сбора логов
+Выполнено, часть найденных ошибок записал в README
+
+## Как запустить проект:
+Запустить helm, аналогично выполнению ДЗ
+
+## Как проверить работоспособность:
+Перейти по ссылкам:
+http://reddit-prometheus - прометей
+http://reddit-grafana - графана
+http://reddit-kibana - кибана
+
+Ссылки если задеплоить приложение:
+http://reddit
+http://reddit-non-prod
+http://production
+http://staging
+http://prod
+
 
 # Курсовой проект
